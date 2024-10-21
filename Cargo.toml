@@ -1,0 +1,18 @@
+[package]
+name = "serde_conl"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+description = "CONL is a human-centric configuration language. This crate has the serde bindings."
+repository = "https://github.com/ConradIrwin/serde_conl"
+
+[dependencies]
+serde = "1"
+conl = "1"
+base64 = "0.22"
+
+[dev-dependencies]
+serde = { version = "1.0.210", features = ["derive"] }
+serde_bytes = "0.11.15"
+indoc = "2.0.5"
