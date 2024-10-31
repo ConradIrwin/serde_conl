@@ -10,9 +10,9 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "conl"
-version = "1.1.0"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7bb4aa19c4520228fd68eb7cf4fdad13f7f768d13ef77ec76f9b428a54650df"
+checksum = "1a828210d76d4f6ffa0396efb186f603aac16820f3ede9e99b26569c142e9b4e"
 
 [[package]]
 name = "indoc"
@@ -58,7 +58,7 @@ dependencies = [
 
 [[package]]
 name = "serde_conl"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64",
  "conl",

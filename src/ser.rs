@@ -38,7 +38,7 @@ fn encode_char(c: char, key: bool, prev: Option<char>, last: bool, output: &mut 
 
 fn encode_string(mut s: &str, key: bool, indent: &str, output: &mut String) {
     if s.is_empty() {
-        output.push_str("\"@");
+        output.push_str("\"{}");
         if !key {
             output.push('\n')
         }
@@ -595,7 +595,7 @@ mod test {
             to_string(&vec!["\0", "", " c", "abc\ndef"]).unwrap(),
             indoc! {r#"
                 = "{00}
-                = "@
+                = "{}
                 = "_c
                 = """
                   abc
@@ -663,7 +663,7 @@ mod test {
                 ("c", Some(" ".to_string())),
             ]),
             indoc! {r##"
-            a = "@
+            a = "{}
             c = "_
             "##},
             Some(BTreeMap::from([
@@ -737,9 +737,9 @@ mod test {
             },
             indoc! {r#"
               c
-                = "@
-                = "@
-                = "@
+                = "{}
+                = "{}
+                = "{}
               d = "\
             "#},
             None,
@@ -772,8 +772,8 @@ mod test {
         do_test(
             vec![Some("".to_string()), None, Some("a".to_string())],
             indoc! {r#"
-                = "@
-                = "@
+                = "{}
+                = "{}
                 = a
             "#},
             Some(vec![None, None, Some("a".to_string())]),

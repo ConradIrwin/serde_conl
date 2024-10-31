@@ -791,7 +791,7 @@ mod test {
                 g: HashMap::from([("a".into(), "a".into())])
             },
             from_str(indoc! {r#"
-                a = "@ string# #comment
+                a = "_string# #comment
                 b = true
                 c = """ # comment?
                   false
