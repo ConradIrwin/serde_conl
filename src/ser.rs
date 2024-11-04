@@ -27,7 +27,6 @@ fn encode_char(c: char, key: bool, prev: Option<char>, last: bool, output: &mut 
         ' ' if prev.is_none() || last => output.push_str("\"_"),
         '\"' => output.push_str("\"\"\""),
         '\t' => output.push_str("\">"),
-        '\r' => output.push_str("\"\\"),
         '\n' => output.push_str("\"/"),
         _ if c.is_control() || c.is_whitespace() => {
             output.push_str(&format!("\"{{{:02X}}}", c as u32))
@@ -626,7 +625,7 @@ mod test {
                   = """
                     wow
                     zer
-                  = oop"\"/s
+                  = oop"{0D}"/s
             "#}
         );
     }
@@ -733,14 +732,14 @@ mod test {
                 a: (),
                 b: Noop,
                 c: vec![(), (), ()],
-                d: '\r',
+                d: '\n',
             },
             indoc! {r#"
               c
                 = "{}
                 = "{}
                 = "{}
-              d = "\
+              d = "/
             "#},
             None,
         );

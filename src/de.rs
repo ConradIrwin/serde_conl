@@ -239,7 +239,6 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        dbg!("deserialize_u8");
         self.consume_number(|n| visitor.visit_u8(n))
     }
 
@@ -686,8 +685,8 @@ mod test {
         );
 
         assert_eq!(
-            HashMap::from([("=ö".to_string(), "\"# \t\r\n".to_string())]),
-            from_str(&r##""="{f6} = """#"_">"\"/"##).unwrap()
+            HashMap::from([("=ö".to_string(), "\"# \t\n".to_string())]),
+            from_str(&r##""="{f6} = """#"_">"/"##).unwrap()
         );
 
         assert_eq!(vec!["b"], from_str::<Vec<String>>("= b").unwrap());
