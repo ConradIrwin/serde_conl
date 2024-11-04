@@ -35,13 +35,17 @@ fn encode_char(c: char, key: bool, prev: Option<char>, last: bool, output: &mut 
     }
 }
 
-fn encode_string(mut s: &str, key: bool, indent: &str, output: &mut String) {
+fn encode_string(mut s: &str, key: bool, indent: &str, output: &mut String) -> Result<()> {
     if s.is_empty() {
-        output.push_str("\"{}");
-        if !key {
-            output.push('\n')
+        if key {
+            Err(Error {
+                lno: 0,
+                msg: "cannot represent an empty key".to_string(),
+            })?;
+        } else {
+            output.push_str("# empty\n")
         }
-        return;
+        return Ok(());
     }
     let use_single_line = if key
         || s.chars().next().unwrap().is_whitespace()
@@ -74,6 +78,7 @@ fn encode_string(mut s: &str, key: bool, indent: &str, output: &mut String) {
             output.push('\n')
         }
     }
+    Ok(())
 }
 
 pub fn to_string<T>(value: &T) -> Result<String>
@@ -176,15 +181,15 @@ impl<'a> ser::Serializer for &'a mut Serializer {
             Some(Ctx::List(indent)) => {
                 self.output.push_str(&indent);
                 self.output.push_str("= ");
-                encode_string(v, false, &indent, &mut self.output);
+                encode_string(v, false, &indent, &mut self.output)?;
                 self.stack.push(Ctx::List(indent))
             }
             Some(Ctx::MapKey(indent)) => self.stack.push(Ctx::MapValue(indent, v.to_string())),
             Some(Ctx::MapValue(indent, key)) => {
                 self.output.push_str(&indent);
-                encode_string(&key, true, &indent, &mut self.output);
+                encode_string(&key, true, &indent, &mut self.output)?;
                 self.output.push_str(" = ");
-                encode_string(v, false, &indent, &mut self.output);
+                encode_string(v, false, &indent, &mut self.output)?;
                 self.stack.push(Ctx::MapKey(indent))
             }
         }
@@ -213,9 +218,16 @@ impl<'a> ser::Serializer for &'a mut Serializer {
                     msg: "top level value must be a map or a list".to_string(),
                 });
             }
-            Some(prev @ Ctx::List(_)) | Some(prev @ Ctx::MapKey(_)) => {
-                self.stack.push(prev);
-                self.serialize_str("")?;
+            Some(Ctx::List(indent)) => {
+                self.output.push_str(&indent);
+                self.output.push_str("= # none\n");
+                self.stack.push(Ctx::List(indent));
+            }
+            Some(Ctx::MapKey(_)) => {
+                return Err(Error {
+                    lno: 0,
+                    msg: "cannot serialize none as a map key".to_string(),
+                });
             }
             Some(Ctx::MapValue(indent, _)) => {
                 self.stack.push(Ctx::MapKey(indent.to_owned()));
@@ -303,7 +315,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
             Some(Ctx::MapValue(indent, key)) => {
                 if len != Some(0) {
                     self.output.push_str(&indent);
-                    encode_string(&key, true, &indent, &mut self.output);
+                    encode_string(&key, true, &indent, &mut self.output)?;
                     self.output.push('\n');
                     if len.is_none() {
                         self.output.push_str(&indent);
@@ -329,7 +341,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     ) -> Result<Self::SerializeTupleVariant> {
         match self.stack.pop() {
             None => {
-                encode_string(variant, true, "", &mut self.output);
+                encode_string(variant, true, "", &mut self.output)?;
                 self.output.push('\n');
                 self.stack.push(Ctx::List("  ".to_string()));
             }
@@ -344,18 +356,18 @@ impl<'a> ser::Serializer for &'a mut Serializer {
                 self.output.push_str("=\n");
                 self.output.push_str(&indent);
                 self.output.push_str("  ");
-                encode_string(variant, true, &indent, &mut self.output);
+                encode_string(variant, true, &indent, &mut self.output)?;
                 self.output.push('\n');
                 self.stack.push(Ctx::List(indent.clone()));
                 self.stack.push(Ctx::List(indent + "    "));
             }
             Some(Ctx::MapValue(indent, key)) => {
                 self.output.push_str(&indent);
-                encode_string(&key, true, &indent, &mut self.output);
+                encode_string(&key, true, &indent, &mut self.output)?;
                 self.output.push('\n');
                 self.output.push_str(&indent);
                 self.output.push_str("  ");
-                encode_string(variant, true, &indent, &mut self.output);
+                encode_string(variant, true, &indent, &mut self.output)?;
                 self.output.push('\n');
                 self.stack.push(Ctx::MapKey(indent.clone()));
                 self.stack.push(Ctx::List(indent.clone() + "    "));
@@ -383,7 +395,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
             }
             Some(Ctx::MapValue(indent, key)) => {
                 self.output.push_str(&indent);
-                encode_string(&key, true, &indent, &mut self.output);
+                encode_string(&key, true, &indent, &mut self.output)?;
                 self.output.push('\n');
                 self.stack.push(Ctx::MapKey(indent.clone()));
                 self.stack.push(Ctx::MapKey(indent + "  "));
@@ -405,7 +417,7 @@ impl<'a> ser::Serializer for &'a mut Serializer {
     ) -> Result<Self::SerializeStructVariant> {
         match self.stack.pop() {
             None => {
-                encode_string(variant, true, "", &mut self.output);
+                encode_string(variant, true, "", &mut self.output)?;
                 self.output.push('\n');
                 self.stack.push(Ctx::List("  ".to_string()));
             }
@@ -420,18 +432,18 @@ impl<'a> ser::Serializer for &'a mut Serializer {
                 self.output.push_str("=\n");
                 self.output.push_str(&indent);
                 self.output.push_str("  ");
-                encode_string(variant, true, &indent, &mut self.output);
+                encode_string(variant, true, &indent, &mut self.output)?;
                 self.output.push('\n');
                 self.stack.push(Ctx::List(indent.clone()));
                 self.stack.push(Ctx::MapKey(indent + "    "));
             }
             Some(Ctx::MapValue(indent, key)) => {
                 self.output.push_str(&indent);
-                encode_string(&key, true, &indent, &mut self.output);
+                encode_string(&key, true, &indent, &mut self.output)?;
                 self.output.push('\n');
                 self.output.push_str(&indent);
                 self.output.push_str("  ");
-                encode_string(variant, true, &indent, &mut self.output);
+                encode_string(variant, true, &indent, &mut self.output)?;
                 self.output.push('\n');
                 self.stack.push(Ctx::MapKey(indent.clone()));
                 self.stack.push(Ctx::MapKey(indent + "    "));
@@ -594,7 +606,7 @@ mod test {
             to_string(&vec!["\0", "", " c", "abc\ndef"]).unwrap(),
             indoc! {r#"
                 = "{00}
-                = "{}
+                = # empty
                 = "_c
                 = """
                   abc
@@ -636,6 +648,7 @@ mod test {
         T: Serialize + Deserialize<'a> + PartialEq + std::fmt::Debug,
     {
         assert_eq!(to_string(&value).unwrap(), expected, "serialization");
+        dbg!(&expected);
         assert_eq!(
             &from_str::<T>(expected).unwrap(),
             &then.unwrap_or(value),
@@ -662,7 +675,7 @@ mod test {
                 ("c", Some(" ".to_string())),
             ]),
             indoc! {r##"
-            a = "{}
+            a = # empty
             c = "_
             "##},
             Some(BTreeMap::from([
@@ -736,9 +749,9 @@ mod test {
             },
             indoc! {r#"
               c
-                = "{}
-                = "{}
-                = "{}
+                = # none
+                = # none
+                = # none
               d = "/
             "#},
             None,
@@ -771,11 +784,15 @@ mod test {
         do_test(
             vec![Some("".to_string()), None, Some("a".to_string())],
             indoc! {r#"
-                = "{}
-                = "{}
+                = # empty
+                = # none
                 = a
             "#},
-            Some(vec![None, None, Some("a".to_string())]),
+            Some(vec![
+                Some("".to_string()),
+                Some("".to_string()),
+                Some("a".to_string()),
+            ]),
         );
     }
 }

@@ -16,7 +16,6 @@ pub struct Deserializer<'de> {
     parser: conl::Parser<'de>,
     is_top_of_file: bool,
     lno: usize,
-    is_list_item: bool,
     peek: Vec<conl::Token<'de>>,
 }
 
@@ -24,7 +23,6 @@ impl<'de> Deserializer<'de> {
     pub fn from_slice(input: &'de [u8]) -> Self {
         Deserializer {
             is_top_of_file: true,
-            is_list_item: false,
             parser: conl::parse(input),
             lno: 1,
             peek: Vec::new(),
@@ -82,11 +80,6 @@ impl<'de> Deserializer<'de> {
         let token = self.read_token()?;
         if let Some(token) = &token {
             self.lno = token.line_number();
-            match &token {
-                Token::ListItem(..) => self.is_list_item = true,
-                Token::MapKey(..) => self.is_list_item = false,
-                _ => {}
-            }
         }
         Ok(token)
     }
@@ -95,9 +88,9 @@ impl<'de> Deserializer<'de> {
     where
         T::Err: Display,
     {
-        let (lno, mut str) = self.consume_value()?;
-        if str == "" {
-            str = Cow::Borrowed("0")
+        let (lno, str) = self.consume_value()?;
+        let Some(str) = str else {
+            return Err(Error::new(lno, "expected number"));
         };
         let num: T = str.parse().map_err(|_| {
             Error::new(
@@ -108,11 +101,12 @@ impl<'de> Deserializer<'de> {
         f(num).map_err(|e| e.set_lno(lno))
     }
 
-    fn consume_value(&mut self) -> Result<(usize, Cow<'de, str>)> {
+    fn consume_value(&mut self) -> Result<(usize, Option<Cow<'de, str>>)> {
         match self.get_token()? {
             Some(
                 tok @ Token::MapKey(..) | tok @ Token::Value(..) | tok @ Token::MultilineValue(..),
-            ) => Ok((tok.line_number(), tok.unescape()?)),
+            ) => Ok((tok.line_number(), Some(tok.unescape()?))),
+            Some(tok @ Token::NoValue(..)) => Ok((tok.line_number(), None)),
             _ => Err(Error::new(self.lno, "expected value")),
         }
     }
@@ -192,9 +186,12 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         V: Visitor<'de>,
     {
         let (lno, s) = self.consume_value()?;
+        let Some(s) = s else {
+            return Err(Error::new(lno, "expected true or false"));
+        };
         let bool = match &s as &str {
             "true" => true,
-            "" | "false" => false,
+            "false" => false,
             _ => return Err(Error::new(lno, format!("invalid bool {:?}", s))),
         };
         visitor.visit_bool(bool).map_err(|e: Error| e.set_lno(lno))
@@ -288,6 +285,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         V: Visitor<'de>,
     {
         let (lno, str) = self.consume_value()?;
+        let Some(str) = str else {
+            return Err(Error::new(lno, "missing value"));
+        };
         if str.len() != 1 {
             return Err(Error::new(lno, "invalid char. expected value of length 1"));
         }
@@ -302,8 +302,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         let (lno, value) = self.consume_value()?;
         match value {
-            Cow::Borrowed(v) => visitor.visit_borrowed_str(v),
-            Cow::Owned(v) => visitor.visit_string(v),
+            None => visitor.visit_borrowed_str(""),
+            Some(Cow::Borrowed(v)) => visitor.visit_borrowed_str(v),
+            Some(Cow::Owned(v)) => visitor.visit_string(v),
         }
         .map_err(|mut e: Error| {
             e.lno = lno;
@@ -325,6 +326,11 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         V: Visitor<'de>,
     {
         let (lno, str) = self.consume_value()?;
+        let Some(str) = str else {
+            return visitor
+                .visit_borrowed_bytes(&[])
+                .map_err(|e: Error| e.set_lno(lno));
+        };
         let str = str.replace(char::is_whitespace, "");
         let bytes = STANDARD
             .decode(str)
@@ -346,24 +352,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         V: Visitor<'de>,
     {
         // A None is typically represented by ommitting the key.
-        // That said, we cannot do so in map keys or in list items,
-        // in which case we use the empty string to represent None.
-        // This means that roundtripping Some("") in a map key or a list
-        // will come back as None.
-        // (this is probably not a problem for configuration files)
-        match self.get_token()? {
-            Some(tok @ Token::MapKey(..)) if tok.unescape()?.is_empty() => {
-                return visitor.visit_none()
-            }
-            Some(tok @ Token::Value(..)) if self.is_list_item && tok.unescape()?.is_empty() => {
-                return visitor.visit_none()
-            }
-            Some(tok) => {
-                self.unget_token(tok);
-            }
-            None => {}
-        }
-
+        // So if we get here, we have something...
         visitor.visit_some(self)
     }
 
