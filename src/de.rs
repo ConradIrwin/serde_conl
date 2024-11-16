@@ -302,9 +302,11 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         let (lno, value) = self.consume_value()?;
         match value {
-            None => visitor.visit_borrowed_str(""),
             Some(Cow::Borrowed(v)) => visitor.visit_borrowed_str(v),
             Some(Cow::Owned(v)) => visitor.visit_string(v),
+            None => {
+                return Err(Error::new(lno, "missing value"))?;
+            }
         }
         .map_err(|mut e: Error| {
             e.lno = lno;
@@ -327,9 +329,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     {
         let (lno, str) = self.consume_value()?;
         let Some(str) = str else {
-            return visitor
-                .visit_borrowed_bytes(&[])
-                .map_err(|e: Error| e.set_lno(lno));
+            return Err(Error::new(lno, "missing value"))?;
         };
         let str = str.replace(char::is_whitespace, "");
         let bytes = STANDARD
@@ -351,9 +351,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        // A None is typically represented by ommitting the key.
-        // So if we get here, we have something...
-        visitor.visit_some(self)
+        match self.get_token()? {
+            Some(Token::NoValue(..)) | None => visitor.visit_none(),
+            Some(tok) => {
+                self.unget_token(tok);
+                visitor.visit_some(self)
+            }
+        }
     }
 
     // type a = ();
@@ -674,8 +678,8 @@ mod test {
         );
 
         assert_eq!(
-            HashMap::from([("=ö".to_string(), "\"# \t\n".to_string())]),
-            from_str(&r##""="{f6} = """#"_">"/"##).unwrap()
+            HashMap::from([("=ö".to_string(), "\"\\ \t\n".to_string())]),
+            from_str(&r##""=\{f6}" = "\"\\ \t\n""##).unwrap()
         );
 
         assert_eq!(vec!["b"], from_str::<Vec<String>>("= b").unwrap());
@@ -778,8 +782,8 @@ mod test {
                 f: vec![1, 2],
                 g: HashMap::from([("a".into(), "a".into())])
             },
-            from_str(indoc! {r#"
-                a = "_string# #comment
+            from_str(indoc! {r##"
+                a = " string#"#comment
                 b = true
                 c = """ # comment?
                   false
@@ -791,7 +795,7 @@ mod test {
                   = 2
                 g =# comment
                  a = a
-                 "#})
+                 "##})
             .unwrap()
         )
     }
@@ -803,6 +807,14 @@ mod test {
             crate::Error {
                 lno: 1,
                 msg: "invalid length 1, expected a tuple of size 2".to_string(),
+            }
+        );
+
+        assert_eq!(
+            from_str::<(String, String)>("= a\n=").unwrap_err(),
+            crate::Error {
+                lno: 2,
+                msg: "missing value".to_string(),
             }
         );
 
