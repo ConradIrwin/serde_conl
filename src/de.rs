@@ -57,7 +57,7 @@ impl<'de> Deserializer<'de> {
         for next in self.parser.by_ref() {
             if matches!(
                 next,
-                Ok(Token::Newline(..) | Token::Comment(..) | Token::MultilineIndicator(..))
+                Ok(Token::Newline(..) | Token::Comment(..) | Token::MultilineHint(..))
             ) {
                 continue;
             }
@@ -127,6 +127,9 @@ impl<'de> Deserializer<'de> {
                 };
                 self.unget_token(Token::ListItem(lno));
             }
+            Some(tok @ Token::NoValue(..)) => {
+                self.unget_token(tok);
+            }
             _ => {
                 return Err(Error::new(self.lno, "expected list"));
             }
@@ -145,6 +148,7 @@ impl<'de> Deserializer<'de> {
                     format!("invalid length, expected a tuple of size {}", len.unwrap()),
                 ));
             }
+            Some(Token::NoValue(..)) => {}
             _ => return Err(Error::new(self.lno, "unexpected token")),
         }
 
@@ -444,6 +448,9 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
                 };
                 self.unget_token(Token::MapKey(lno, key));
             }
+            Some(tok @ Token::NoValue(..)) => {
+                self.unget_token(tok);
+            }
             _ => {
                 return Err(Error::new(self.lno, "expected map"));
             }
@@ -456,6 +463,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         match self.get_token()? {
             None if is_top => {}
             Some(Token::Outdent(..)) if !is_top => {}
+            Some(Token::NoValue(..)) => {}
             _ => return Err(Error::new(self.lno, "unexpected token")),
         }
 
@@ -668,7 +676,7 @@ mod test {
     fn test_de() {
         assert_eq!(
             HashMap::<String, String>::new(),
-            from_str("# test").unwrap()
+            from_str("; test").unwrap()
         );
 
         assert_eq!(HashMap::from([("a", "a")]), from_str("a = a").unwrap());
@@ -710,7 +718,7 @@ mod test {
                 a =
 
                   b = 1
-                  # test
+                  ; test
                   d = c
             "#})
             .unwrap(),
@@ -774,7 +782,7 @@ mod test {
 
         assert_eq!(
             Test {
-                a: " string#".into(),
+                a: " string;".into(),
                 b: Some(true),
                 c: false,
                 d: 1.5,
@@ -783,9 +791,9 @@ mod test {
                 g: HashMap::from([("a".into(), "a".into())])
             },
             from_str(indoc! {r##"
-                a = " string#"#comment
+                a = " string;";comment
                 b = true
-                c = """ # comment?
+                c = """ ; comment?
                   false
                 d = 1.5
                 e
@@ -793,7 +801,7 @@ mod test {
                 f
                   = 1
                   = 2
-                g =# comment
+                g =; comment
                  a = a
                  "##})
             .unwrap()
@@ -831,7 +839,7 @@ mod test {
             b: bool,
         }
         assert_eq!(
-            from_str::<A>("# b = false\nc = true").unwrap_err(),
+            from_str::<A>("; b = false\nc = true").unwrap_err(),
             crate::Error {
                 lno: 2,
                 msg: "unknown field `c`, expected `b`".to_string(),
