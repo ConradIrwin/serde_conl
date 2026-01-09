@@ -34,7 +34,12 @@ fn encode_string(s: &str, key: bool, indent: &str, output: &mut String) {
         return;
     }
 
-    if must_quote || is_multiline || matches!(s.chars().next(), Some(';' | '"' | '=')) {
+    if must_quote
+        || is_multiline
+        || s.starts_with('"')
+        || s.contains(';')
+        || (key && s.contains('='))
+    {
         output.push_str("\"");
         for c in s.chars() {
             match c {
@@ -600,7 +605,7 @@ mod test {
                   = a
                 b
                 c
-                  = "="
+                  = =
                   = """
                     wow
                     zer
@@ -774,6 +779,34 @@ mod test {
                 = a
             "#},
             Some(vec![Some("".to_string()), None, Some("a".to_string())]),
+        );
+    }
+
+    #[test]
+    fn test_semicolon_roundtrip() {
+        do_test(
+            vec![
+                "a;b;c".to_string(),
+                "no;comment".to_string(),
+                ";start".to_string(),
+            ],
+            indoc! {r#"
+                = "a;b;c"
+                = "no;comment"
+                = ";start"
+            "#},
+            None,
+        );
+    }
+
+    #[test]
+    fn test_equals_in_key() {
+        do_test(
+            BTreeMap::from([("a=b".to_string(), "c".to_string())]),
+            indoc! {r#"
+                "a=b" = c
+            "#},
+            None,
         );
     }
 }

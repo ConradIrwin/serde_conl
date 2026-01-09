@@ -121,6 +121,7 @@ impl<'de> Deserializer<'de> {
             Some(tok @ Token::ListItem(..)) if is_top => {
                 self.unget_token(tok);
             }
+            None if is_top => {}
             Some(Token::Indent(..)) if !is_top => {
                 let Some(Token::ListItem(lno)) = self.get_token()? else {
                     return Err(Error::new(self.lno, "expected list"));
@@ -292,7 +293,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         let Some(str) = str else {
             return Err(Error::new(lno, "missing value"));
         };
-        if str.len() != 1 {
+        if str.chars().count() != 1 {
             return Err(Error::new(lno, "invalid char. expected value of length 1"));
         }
         visitor
@@ -845,5 +846,35 @@ mod test {
                 msg: "unknown field `c`, expected `b`".to_string(),
             }
         );
+    }
+
+    #[test]
+    fn test_char_deserialization() {
+        assert_eq!(
+            from_str::<HashMap<String, char>>("c = a").unwrap(),
+            HashMap::from([("c".to_string(), 'a')])
+        );
+        assert_eq!(
+            from_str::<HashMap<String, char>>("c = ä").unwrap(),
+            HashMap::from([("c".to_string(), 'ä')])
+        );
+        assert_eq!(
+            from_str::<HashMap<String, char>>("c = 日").unwrap(),
+            HashMap::from([("c".to_string(), '日')])
+        );
+        assert_eq!(
+            from_str::<HashMap<String, char>>("c = 🎉").unwrap(),
+            HashMap::from([("c".to_string(), '🎉')])
+        );
+        assert!(from_str::<HashMap<String, char>>("c = ab").is_err());
+    }
+
+    #[test]
+    fn test_empty_input() {
+        assert_eq!(
+            from_str::<HashMap<String, String>>("").unwrap(),
+            HashMap::new()
+        );
+        assert_eq!(from_str::<Vec<String>>("").unwrap(), Vec::<String>::new());
     }
 }
